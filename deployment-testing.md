@@ -221,22 +221,26 @@ az account show --query id -o tsv
 ## 7.1 Create file
 
 ```bash
-vi cloud-integration.json
+vi cloud-integration.json and service-key.json with below same content
 ```
 
 Paste:
 ```json
 {
-  "subscriptionId": "<SUBSCRIPTION_ID>",
-  "tenantId": "<TENANT_ID>",
-  "clientId": "<APP_ID>",
-  "clientSecret": "<CLIENT_SECRET>"
+  "subscriptionId": "1175a59b-96b9-40b1-816d-23b7f16e38b8",
+  "serviceKey": {
+    "appId": "<CLIENT_ID>",
+    "displayName": "OpenCostAccess",
+    "password": "<CLIENT_SECRET>",
+    "tenant": "<TENANT_ID>"
+  }
 }
 ```
 ## 7.2 Create secret in Kubernetes
 
 ```bash
 kubectl create secret generic azure-service-key \
+  --from-file=service-key.json \
   --from-file=cloud-integration.json \
   -n opencost
 ```
@@ -270,9 +274,20 @@ vi values-opencost.yaml
 Put this:
 
 ```yaml
+extraVolumes:
+  - name: service-key-secret
+    secret:
+      secretName: azure-service-key
+
 opencost:
+  cloudIntegrationSecret: azure-service-key
+
   exporter:
     defaultClusterId: aks-prod-cluster
+
+    extraVolumeMounts:
+      - mountPath: /var/secrets
+        name: service-key-secret
 
   prometheus:
     internal:
@@ -283,8 +298,6 @@ opencost:
 
   ui:
     enabled: true
-
-  cloudIntegrationSecret: azure-service-key
 
   cloudCost:
     enabled: true
@@ -320,7 +333,7 @@ service:
 # 10. Install OpenCost in AKS
 
 ```bash
-helm install opencost opencost-charts/opencost \
+helm --upgrade install opencost opencost-charts/opencost \
   --namespace opencost \
   -f values-opencost.yaml
 ```
@@ -435,6 +448,7 @@ You will get:
 # 14. Verify OpenCost API (Useful for DevOps)
 
 ```bash
+kubectl port-forward svc/opencost 9090:9090 -n opencost
 curl http://localhost:9003/allocation/compute?window=24h
 ```
 
@@ -442,6 +456,15 @@ or
 
 ```bash
 curl http://localhost:9003/model/assets
+curl http://localhost:9003/allocation/compute?window=1d
+curl "http://localhost:9003/allocation/compute?window=7d"
+curl "http://localhost:9003/allocation/compute?window=1d&aggregate=pod"
+curl "http://localhost:9003/allocation/compute?window=1d&aggregate=controller"
+curl "http://localhost:9003/assets?window=1d"
+curl "http://localhost:9003/cloudCost"
+curl "http://localhost:9003/pricing"
+curl http://localhost:9003/metrics
+
 ```
 
 This returns JSON cost allocation data.
